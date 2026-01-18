@@ -5,7 +5,7 @@
 	"minAppVersion": "0.15.0",
 	"description": "Dynamic widget that retrieves a random verse from the Holy Quran.",
 	"author": "taskfork",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://buymeacoffee.com/a0AJsLG",
+	"authorUrl": "https://github.com/taskfork",
+	"fundingUrl": "https://buymeacoffee.com/taskfork",
 	"isDesktopOnly": false
 }
