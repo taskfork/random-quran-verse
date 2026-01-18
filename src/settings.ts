@@ -129,7 +129,6 @@ export class QuranSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Arabic font size')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			.setDesc('Adjust the size of the Arabic text in the verse card.')
 			.addSlider(slider => {
 				const currentVal = parseFloat(this.plugin.settings.fontSize) || 2.0;
