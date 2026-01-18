@@ -74,8 +74,8 @@ export class QuranSettingTab extends PluginSettingTab {
 			}
 
 			this.display();
-		} catch (e) {
-			console.error("Quran Plugin: Metadata fetch failed", e);
+		} catch {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			new Notice("Quran Plugin: Failed to fetch translation metadata. Check your internet connection.");
 		} finally {
 			this.isLoadingMetadata = false;
@@ -94,7 +94,7 @@ export class QuranSettingTab extends PluginSettingTab {
 		try {
 			const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
 			return displayNames.of(code) || code.toUpperCase();
-		} catch (e) {
+		} catch {
 			return code.toUpperCase();
 		}
 	}
@@ -102,8 +102,8 @@ export class QuranSettingTab extends PluginSettingTab {
 	private resolveColor(color: string): string {
 		if (color.startsWith('var(')) {
 			const temp = document.createElement('div');
+			temp.addClass('is-hidden');
 			temp.style.color = color;
-			temp.style.display = 'none';
 			document.body.appendChild(temp);
 			const resolved = getComputedStyle(temp).color;
 			document.body.removeChild(temp);
@@ -129,6 +129,7 @@ export class QuranSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Arabic font size')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			.setDesc('Adjust the size of the Arabic text in the verse card.')
 			.addSlider(slider => {
 				const currentVal = parseFloat(this.plugin.settings.fontSize) || 2.0;
@@ -203,11 +204,10 @@ export class QuranSettingTab extends PluginSettingTab {
 								const filtered = data.filter(e => e.format === 'text' && e.type === 'translation');
 
 								if (filtered.length > 0) {
-									// Use non-null assertion to satisfy TS
 									this.plugin.settings.translation = filtered[0]!.identifier;
 								}
-							} catch (error) {
-								console.error("Quran Plugin: Auto-edition failed", error);
+							} catch {
+								console.error("Quran plugin: Auto-edition failed");
 							}
 							await this.plugin.saveSettings();
 							await this.fetchMetadata();
