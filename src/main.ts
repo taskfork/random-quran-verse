@@ -1,4 +1,4 @@
-import { Plugin, requestUrl, setIcon } from 'obsidian';
+import { Plugin, requestUrl, setIcon, MarkdownRenderChild } from 'obsidian';
 import { QuranSettings, DEFAULT_SETTINGS, QuranSettingTab } from './settings';
 
 interface AyahData {
@@ -26,16 +26,9 @@ interface ApiResponse {
 
 export default class QuranPlugin extends Plugin {
 	settings: QuranSettings;
-	private styleElement: HTMLStyleElement;
 
 	async onload() {
 		await this.loadSettings();
-
-		// Initialize style element
-		this.styleElement = document.createElement('style');
-		this.styleElement.id = 'quran-plugin-dynamic-styles';
-		document.head.appendChild(this.styleElement);
-
 		this.applyGlobalStyles();
 		this.addSettingTab(new QuranSettingTab(this.app, this));
 
@@ -87,7 +80,8 @@ export default class QuranPlugin extends Plugin {
 					const trData = trJson.data;
 
 					const toArabicDigits = (num: number): string => {
-						return num.toString().replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[parseInt(d)]);
+						const digits = "٠١٢٣٤٥٦٧٨٩";
+						return num.toString().replace(/\d/g, (d) => digits[parseInt(d)] ?? d);
 					};
 
 					const endOfAyahSymbol = "\u06DD";
@@ -123,7 +117,7 @@ export default class QuranPlugin extends Plugin {
 					// Reload Button
 					const reloadBtn = actionsEl.createEl("button", {
 						cls: "quran-btn",
-						attr: { "aria-label": "Reload Verse" }
+						attr: { "aria-label": "Reload verse" }
 					});
 					const reloadIconEl = reloadBtn.createSpan({ cls: "quran-icon" });
 					setIcon(reloadIconEl, "refresh-cw");
@@ -135,7 +129,7 @@ export default class QuranPlugin extends Plugin {
 					// Link Button
 					const linkBtn = actionsEl.createEl("button", {
 						cls: "quran-btn",
-						attr: { "aria-label": "Open in Al Quran" }
+						attr: { "aria-label": "Open link" }
 					});
 					const linkIconEl = linkBtn.createSpan({ cls: "quran-icon" });
 					setIcon(linkIconEl, "link");
@@ -153,9 +147,9 @@ export default class QuranPlugin extends Plugin {
 						if (container.isConnected) void renderVerse();
 					}, 5000);
 
-					ctx.addChild({
-						onunload: () => window.clearTimeout(timeoutId)
-					} as any);
+					const cleanup = new MarkdownRenderChild(el);
+					cleanup.onunload = () => window.clearTimeout(timeoutId);
+					ctx.addChild(cleanup);
 				}
 			};
 
@@ -164,60 +158,21 @@ export default class QuranPlugin extends Plugin {
 	}
 
 	applyGlobalStyles() {
-		if (!this.styleElement) return;
-
-		const bgColor = this.settings.backgroundColor;
-		const accentColor = this.settings.accentColor;
-		const fontSize = this.settings.fontSize;
-
-		let resolvedTextColor;
-		if (bgColor.includes('var(')) {
-			resolvedTextColor = 'var(--text-normal)';
-		} else {
-			resolvedTextColor = this.getTextColor(bgColor);
-		}
-
+		const { backgroundColor, accentColor, fontSize } = this.settings;
 		const numericSize = parseFloat(fontSize);
 		const lineHeight = `${numericSize * 1.6}rem`;
 
-		this.styleElement.textContent = `
-			body {
-				--quran-bg: ${bgColor};
-				--quran-text: ${resolvedTextColor};
-				--quran-accent: ${accentColor};
-				--quran-font-size: ${fontSize};
-				--quran-line-height: ${lineHeight};
-			}
-		`.trim();
+		document.body.style.setProperty('--quran-bg', backgroundColor);
+		document.body.style.setProperty('--quran-accent', accentColor);
+		document.body.style.setProperty('--quran-font-size', fontSize);
+		document.body.style.setProperty('--quran-line-height', lineHeight);
 	}
 
-	getTextColor(bgColor: string): string {
-		if (!bgColor || bgColor.includes('var(')) {
-			return 'var(--text-normal)';
-		}
-
-		try {
-			const hexMatch = bgColor.match(/[0-9a-f]{3,6}/i);
-			if (!hexMatch) return 'var(--text-normal)';
-
-			const hex = hexMatch[0];
-			let r, g, b;
-
-			if (hex.length === 3) {
-				r = parseInt(hex[0] + hex[0], 16);
-				g = parseInt(hex[1] + hex[1], 16);
-				b = parseInt(hex[2] + hex[2], 16);
-			} else {
-				r = parseInt(hex.substring(0, 2), 16);
-				g = parseInt(hex.substring(2, 4), 16);
-				b = parseInt(hex.substring(4, 6), 16);
-			}
-
-			const hsp = Math.sqrt(0.299 * (r * r) + 0.587 * (g * g) + 0.114 * (b * b));
-			return hsp > 127.5 ? '#111111' : '#ffffff';
-		} catch {
-			return 'var(--text-normal)';
-		}
+	removeGlobalStyles() {
+		document.body.style.removeProperty('--quran-bg');
+		document.body.style.removeProperty('--quran-accent');
+		document.body.style.removeProperty('--quran-font-size');
+		document.body.style.removeProperty('--quran-line-height');
 	}
 
 	async loadSettings() {
@@ -230,8 +185,6 @@ export default class QuranPlugin extends Plugin {
 	}
 
 	onunload() {
-		if (this.styleElement) {
-			this.styleElement.remove();
-		}
+		this.removeGlobalStyles();
 	}
 }

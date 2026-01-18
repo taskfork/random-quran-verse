@@ -58,7 +58,7 @@ export class QuranSettingTab extends PluginSettingTab {
 			const langRes = await requestUrl('https://api.alquran.cloud/v1/edition/language');
 			const langJson = langRes.json as LanguageResponse;
 
-			if (langJson && langJson.data) {
+			if (langJson?.data) {
 				this.languages = langJson.data.map((lang: string) => ({
 					code: lang,
 					name: this.getFullLanguageName(lang)
@@ -69,7 +69,7 @@ export class QuranSettingTab extends PluginSettingTab {
 			const edRes = await requestUrl(`https://api.alquran.cloud/v1/edition/language/${this.plugin.settings.language}`);
 			const edJson = edRes.json as EditionResponse;
 
-			if (edJson && edJson.data) {
+			if (edJson?.data) {
 				this.editions = edJson.data.filter((e: Edition) => e.format === 'text' && e.type === 'translation');
 			}
 
@@ -90,7 +90,7 @@ export class QuranSettingTab extends PluginSettingTab {
 			'sd': 'Sindhi', 'si': 'Sinhala', 'sq': 'Albanian', 'sw': 'Swahili',
 			'tg': 'Tajik', 'tt': 'Tatar', 'ug': 'Uyghur', 'ur': 'Urdu', 'uz': 'Uzbek'
 		};
-		if (manualMap[code]) return manualMap[code];
+		if (manualMap[code]) return manualMap[code] ?? code.toUpperCase();
 		try {
 			const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
 			return displayNames.of(code) || code.toUpperCase();
@@ -103,13 +103,17 @@ export class QuranSettingTab extends PluginSettingTab {
 		if (color.startsWith('var(')) {
 			const temp = document.createElement('div');
 			temp.style.color = color;
+			temp.style.display = 'none';
 			document.body.appendChild(temp);
 			const resolved = getComputedStyle(temp).color;
 			document.body.removeChild(temp);
 
 			const rgbMatch = resolved.match(/\d+/g);
 			if (rgbMatch && rgbMatch.length >= 3) {
-				return "#" + ((1 << 24) + (parseInt(rgbMatch[0]) << 16) + (parseInt(rgbMatch[1]) << 8) + parseInt(rgbMatch[2])).toString(16).slice(1);
+				const r = parseInt(rgbMatch[0] ?? "0");
+				const g = parseInt(rgbMatch[1] ?? "0");
+				const b = parseInt(rgbMatch[2] ?? "0");
+				return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 			}
 		}
 		return color.startsWith('#') ? color : '#000000';
@@ -118,6 +122,10 @@ export class QuranSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		new Setting(containerEl)
+			.setName('Appearance')
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName('Arabic font size')
@@ -134,7 +142,6 @@ export class QuranSettingTab extends PluginSettingTab {
 					});
 			});
 
-		// Background Color Setting
 		new Setting(containerEl)
 			.setName('Background color')
 			.setDesc('Choose a custom background color for the verse card.')
@@ -153,7 +160,6 @@ export class QuranSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Accent Color Setting
 		new Setting(containerEl)
 			.setName('Accent color')
 			.setDesc('Choose a custom accent color for the left border.')
@@ -173,6 +179,10 @@ export class QuranSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName('Translation')
+			.setHeading();
+
+		new Setting(containerEl)
 			.setName('Translation language')
 			.setDesc('Select the language for the verse translation.')
 			.addDropdown(dropdown => {
@@ -188,11 +198,13 @@ export class QuranSettingTab extends PluginSettingTab {
 							try {
 								const edRes = await requestUrl(`https://api.alquran.cloud/v1/edition/language/${val}`);
 								const edJson = edRes.json as EditionResponse;
-								if (edJson && edJson.data) {
-									const filtered = edJson.data.filter((edition: Edition) => edition.format === 'text' && edition.type === 'translation');
-									if (filtered && filtered.length > 0) {
-										this.plugin.settings.translation = filtered[0].identifier;
-									}
+
+								const data = edJson?.data ?? [];
+								const filtered = data.filter(e => e.format === 'text' && e.type === 'translation');
+
+								if (filtered.length > 0) {
+									// Use non-null assertion to satisfy TS
+									this.plugin.settings.translation = filtered[0]!.identifier;
 								}
 							} catch (error) {
 								console.error("Quran Plugin: Auto-edition failed", error);
