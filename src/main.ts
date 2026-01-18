@@ -46,10 +46,7 @@ export default class QuranPlugin extends Plugin {
 
 				// Render Skeleton Loading State
 				const skeletonArabic = container.createDiv({ cls: "quran-skeleton quran-skeleton-arabic" });
-
 				const skeletonDivider = container.createDiv({ cls: "quran-skeleton-divider" });
-				skeletonDivider.setAttr("style", "border-bottom: 1px solid var(--background-modifier-border); width: 100%; height: 1px; margin-bottom: 0.5em;");
-
 				const skeletonEnglish = container.createDiv({ cls: "quran-skeleton quran-skeleton-english" });
 				const skeletonMeta = container.createDiv({ cls: "quran-skeleton quran-skeleton-meta" });
 
@@ -95,12 +92,11 @@ export default class QuranPlugin extends Plugin {
 
 					const isTranslationRtl = trData.edition.direction === "rtl";
 
-					const translationEl = container.createDiv({
-						cls: "quran-english",
+					container.createDiv({
+						cls: isTranslationRtl ? "quran-translation quran-rtl" : "quran-translation quran-ltr",
 						text: trData.text,
 						attr: { dir: isTranslationRtl ? "rtl" : "ltr" }
 					});
-					translationEl.style.textAlign = isTranslationRtl ? 'right' : 'left';
 
 					// Footer Container
 					const footerEl = container.createDiv({ cls: "quran-footer" });
@@ -121,20 +117,18 @@ export default class QuranPlugin extends Plugin {
 					});
 					const reloadIconEl = reloadBtn.createSpan({ cls: "quran-icon" });
 					setIcon(reloadIconEl, "refresh-cw");
-					reloadBtn.addEventListener("click", (e) => {
-						e.preventDefault();
+					reloadBtn.addEventListener("click", () => {
 						void renderVerse();
 					});
 
 					// Link Button
 					const linkBtn = actionsEl.createEl("button", {
 						cls: "quran-btn",
-						attr: { "aria-label": "Open link" }
+						attr: { "aria-label": "Open in browser" }
 					});
 					const linkIconEl = linkBtn.createSpan({ cls: "quran-icon" });
 					setIcon(linkIconEl, "link");
-					linkBtn.addEventListener("click", (e) => {
-						e.preventDefault();
+					linkBtn.addEventListener("click", () => {
 						const surahNum = arData.surah.number;
 						const ayahNum = arData.numberInSurah;
 						window.open(`https://alquran.cloud/surah/${surahNum}/${this.settings.translation}#${ayahNum}`, "_blank");
