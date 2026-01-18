@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "random-quran-verse",
+	"name": "Random Quran Verse",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
+	"description": "Dynamic widget that retrieves a random verse from the Holy Quran.",
+	"author": "taskfork",
 	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"fundingUrl": "https://buymeacoffee.com/a0AJsLG",
 	"isDesktopOnly": false
 }

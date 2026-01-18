@@ -1,99 +1,237 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { Plugin, requestUrl, setIcon } from 'obsidian';
+import { QuranSettings, DEFAULT_SETTINGS, QuranSettingTab } from './settings';
 
-// Remember to rename these classes and interfaces!
+interface AyahData {
+	number: number;
+	text: string;
+	numberInSurah: number;
+	surah: {
+		number: number;
+		name: string;
+		englishName: string;
+	};
+	edition: {
+		identifier: string;
+		language: string;
+		name: string;
+		direction: string | null;
+	};
+}
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+interface ApiResponse {
+	code: number;
+	status: string;
+	data: AyahData;
+}
+
+export default class QuranPlugin extends Plugin {
+	settings: QuranSettings;
+	private styleElement: HTMLStyleElement;
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+		// Initialize style element
+		this.styleElement = document.createElement('style');
+		this.styleElement.id = 'quran-plugin-dynamic-styles';
+		document.head.appendChild(this.styleElement);
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
+		this.applyGlobalStyles();
+		this.addSettingTab(new QuranSettingTab(this.app, this));
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+		this.registerMarkdownCodeBlockProcessor("quran-verse", async (source, el, ctx) => {
+			const renderVerse = async () => {
+				el.empty();
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+				const container = el.createDiv({ cls: "quran-verse-card" });
+
+				// Header Section
+				const headerEl = container.createDiv({ cls: "quran-header" });
+				const headerIconEl = headerEl.createSpan({ cls: "quran-header-icon" });
+				setIcon(headerIconEl, "book-open");
+				headerEl.createDiv({ cls: "quran-header-title", text: "Holy Quran" });
+
+				// Render Skeleton Loading State
+				const skeletonArabic = container.createDiv({ cls: "quran-skeleton quran-skeleton-arabic" });
+
+				const skeletonDivider = container.createDiv({ cls: "quran-skeleton-divider" });
+				skeletonDivider.setAttr("style", "border-bottom: 1px solid var(--background-modifier-border); width: 100%; height: 1px; margin-bottom: 0.5em;");
+
+				const skeletonEnglish = container.createDiv({ cls: "quran-skeleton quran-skeleton-english" });
+				const skeletonMeta = container.createDiv({ cls: "quran-skeleton quran-skeleton-meta" });
+
+				try {
+					const randomRes = await requestUrl(`https://api.alquran.cloud/v1/ayah/${Math.floor(Math.random() * 6236) + 1}`);
+					const randomJson = randomRes.json as ApiResponse;
+					if (randomJson.code !== 200) throw new Error("Random API Error");
+
+					const reference = randomJson.data.number;
+
+					const [arRes, trRes] = await Promise.all([
+						requestUrl(`https://api.alquran.cloud/v1/ayah/${reference}/quran-uthmani`),
+						requestUrl(`https://api.alquran.cloud/v1/ayah/${reference}/${this.settings.translation}`)
+					]);
+
+					const arJson = arRes.json as ApiResponse;
+					const trJson = trRes.json as ApiResponse;
+
+					if (arJson.code !== 200 || trJson.code !== 200) throw new Error("Edition API Error");
+
+					// Success: Remove skeletons and divider
+					skeletonArabic.remove();
+					skeletonDivider.remove();
+					skeletonEnglish.remove();
+					skeletonMeta.remove();
+
+					const arData = arJson.data;
+					const trData = trJson.data;
+
+					const toArabicDigits = (num: number): string => {
+						return num.toString().replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[parseInt(d)]);
+					};
+
+					const endOfAyahSymbol = "\u06DD";
+					const fullArabicText = `${arData.text} ${endOfAyahSymbol}${toArabicDigits(arData.numberInSurah)}`;
+
+					container.createDiv({
+						cls: "quran-arabic",
+						text: fullArabicText,
+						attr: { dir: "rtl" }
+					});
+
+					const isTranslationRtl = trData.edition.direction === "rtl";
+
+					const translationEl = container.createDiv({
+						cls: "quran-english",
+						text: trData.text,
+						attr: { dir: isTranslationRtl ? "rtl" : "ltr" }
+					});
+					translationEl.style.textAlign = isTranslationRtl ? 'right' : 'left';
+
+					// Footer Container
+					const footerEl = container.createDiv({ cls: "quran-footer" });
+
+					// Action buttons on the left
+					const actionsEl = footerEl.createDiv({ cls: "quran-actions" });
+
+					// Metadata on the right
+					footerEl.createDiv({
+						cls: "quran-meta",
+						text: `— ${trData.surah.englishName} (${trData.surah.number}), Ayah ${trData.numberInSurah}`
+					});
+
+					// Reload Button
+					const reloadBtn = actionsEl.createEl("button", {
+						cls: "quran-btn",
+						attr: { "aria-label": "Reload Verse" }
+					});
+					const reloadIconEl = reloadBtn.createSpan({ cls: "quran-icon" });
+					setIcon(reloadIconEl, "refresh-cw");
+					reloadBtn.addEventListener("click", (e) => {
+						e.preventDefault();
+						void renderVerse();
+					});
+
+					// Link Button
+					const linkBtn = actionsEl.createEl("button", {
+						cls: "quran-btn",
+						attr: { "aria-label": "Open in Al Quran" }
+					});
+					const linkIconEl = linkBtn.createSpan({ cls: "quran-icon" });
+					setIcon(linkIconEl, "link");
+					linkBtn.addEventListener("click", (e) => {
+						e.preventDefault();
+						const surahNum = arData.surah.number;
+						const ayahNum = arData.numberInSurah;
+						window.open(`https://alquran.cloud/surah/${surahNum}/${this.settings.translation}#${ayahNum}`, "_blank");
+					});
+
+				} catch (err) {
+					console.error("Quran Plugin Error:", err);
+
+					const timeoutId = window.setTimeout(() => {
+						if (container.isConnected) void renderVerse();
+					}, 5000);
+
+					ctx.addChild({
+						onunload: () => window.clearTimeout(timeoutId)
+					} as any);
 				}
-				return false;
-			}
+			};
+
+			await renderVerse();
 		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
 	}
 
-	onunload() {
+	applyGlobalStyles() {
+		if (!this.styleElement) return;
+
+		const bgColor = this.settings.backgroundColor;
+		const accentColor = this.settings.accentColor;
+		const fontSize = this.settings.fontSize;
+
+		let resolvedTextColor;
+		if (bgColor.includes('var(')) {
+			resolvedTextColor = 'var(--text-normal)';
+		} else {
+			resolvedTextColor = this.getTextColor(bgColor);
+		}
+
+		const numericSize = parseFloat(fontSize);
+		const lineHeight = `${numericSize * 1.6}rem`;
+
+		this.styleElement.textContent = `
+			body {
+				--quran-bg: ${bgColor};
+				--quran-text: ${resolvedTextColor};
+				--quran-accent: ${accentColor};
+				--quran-font-size: ${fontSize};
+				--quran-line-height: ${lineHeight};
+			}
+		`.trim();
+	}
+
+	getTextColor(bgColor: string): string {
+		if (!bgColor || bgColor.includes('var(')) {
+			return 'var(--text-normal)';
+		}
+
+		try {
+			const hexMatch = bgColor.match(/[0-9a-f]{3,6}/i);
+			if (!hexMatch) return 'var(--text-normal)';
+
+			const hex = hexMatch[0];
+			let r, g, b;
+
+			if (hex.length === 3) {
+				r = parseInt(hex[0] + hex[0], 16);
+				g = parseInt(hex[1] + hex[1], 16);
+				b = parseInt(hex[2] + hex[2], 16);
+			} else {
+				r = parseInt(hex.substring(0, 2), 16);
+				g = parseInt(hex.substring(2, 4), 16);
+				b = parseInt(hex.substring(4, 6), 16);
+			}
+
+			const hsp = Math.sqrt(0.299 * (r * r) + 0.587 * (g * g) + 0.114 * (b * b));
+			return hsp > 127.5 ? '#111111' : '#ffffff';
+		} catch {
+			return 'var(--text-normal)';
+		}
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as QuranSettings;
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
+		this.applyGlobalStyles();
 	}
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
+	onunload() {
+		if (this.styleElement) {
+			this.styleElement.remove();
+		}
 	}
 }

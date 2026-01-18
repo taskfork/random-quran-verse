@@ -1,8 +1,164 @@
-/*
+/* Global font-face for the Quran font */
+@font-face {
+	font-family: 'UthmanicFont';
+	src: url('./src/fonts/UthmanicHafs1Ver18.woff2') format('woff2');
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.quran-verse-card {
+	background-color: var(--quran-bg);
+	padding: 1.5em;
+	border-radius: 4px;
+	margin: 1em 0;
+	border-left: 4px solid var(--quran-accent);
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+	position: relative;
+}
 
-If your plugin does not need CSS, delete this file.
+/* Header Styles */
+.quran-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 0.5em; /* Increased margin for better spacing */
+}
 
-*/
+.quran-header-title {
+	font-weight: bold;
+	font-size: 0.9em;
+	color: var(--text-muted);
+	text-transform: none; /* Already mixed case in main.ts */
+	letter-spacing: 0.05em;
+}
+
+.quran-header-icon {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+}
+
+/* Skeleton Loading Styles */
+.quran-skeleton {
+	background-color: var(--background-modifier-border);
+	border-radius: 999px;
+	animation: quran-pulse 1.5s infinite ease-in-out;
+}
+
+.quran-skeleton-arabic {
+	height: 2.5rem;
+	width: 80%;
+	align-self: flex-end;
+}
+
+.quran-skeleton-english {
+	height: 1.2rem;
+	width: 95%;
+}
+
+.quran-skeleton-meta {
+	height: 0.8rem;
+	width: 40%;
+	align-self: flex-end;
+}
+
+@keyframes quran-pulse {
+	0% {
+		opacity: 0.6;
+	}
+
+	50% {
+		opacity: 0.3;
+	}
+
+	100% {
+		opacity: 0.6;
+	}
+}
+
+/* Text Styles */
+.quran-arabic {
+	font-family: 'UthmanicFont', serif;
+	line-height: var(--quran-line-height);
+	font-size: var(--quran-font-size);
+	text-align: right;
+	padding-bottom: 0.5em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.quran-english {
+	color: var(--text-normal);
+}
+
+/* Footer layout */
+.quran-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 0.5em;
+	gap: 1em;
+}
+
+.quran-actions {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
+.quran-meta {
+	font-size: 0.85em;
+	opacity: 0.7;
+	text-align: right;
+	flex-grow: 1;
+}
+
+/* Icon-only button styling */
+.quran-btn {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	padding: 0;
+	margin: 0;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	transition: background-color 0.15s ease, transform 0.1s ease;
+	color: var(--text-muted);
+	width: 32px;
+	height: 32px;
+}
+
+	.quran-btn:hover {
+		background-color: rgba(255, 255, 255, 0.1);
+		color: var(--text-normal);
+	}
+
+	.quran-btn:active {
+		transform: scale(0.9);
+		background-color: rgba(255, 255, 255, 0.2);
+	}
+
+.quran-icon {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+	/* Updated SVG styles for Obsidian/Lucide icons */
+	.quran-icon svg,
+	.quran-header-icon svg {
+		width: 100%;
+		height: 100%;
+		fill: none; /* Prevents the "filled in" look */
+		stroke: currentColor;
+		stroke-width: 2px;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
