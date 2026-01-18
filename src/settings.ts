@@ -75,8 +75,7 @@ export class QuranSettingTab extends PluginSettingTab {
 
 			this.display();
 		} catch {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			new Notice("Quran Plugin: Failed to fetch translation metadata. Check your internet connection.");
+			new Notice("Failed to fetch translation metadata. Check your internet connection.");
 		} finally {
 			this.isLoadingMetadata = false;
 		}
@@ -129,7 +128,7 @@ export class QuranSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Arabic font size')
-			.setDesc('Adjust the size of the Arabic text in the verse card.')
+			.setDesc('Adjust the size of the verse in the verse card.')
 			.addSlider(slider => {
 				const currentVal = parseFloat(this.plugin.settings.fontSize) || 2.0;
 				slider
