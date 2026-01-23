@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from 'node:module';
+import stylePlugin from 'esbuild-style-plugin';
 
 const banner =
 `/*
@@ -37,6 +38,14 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
+	plugins: [
+		stylePlugin({
+			inline: true,
+		})
+	],
+	loader: {
+		'.woff2': 'dataurl',
+	},
 	outfile: "main.js",
 	minify: prod,
 });

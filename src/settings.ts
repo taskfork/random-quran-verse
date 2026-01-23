@@ -7,6 +7,9 @@ export interface QuranSettings {
 	fontSize: string;
 	backgroundColor: string;
 	accentColor: string;
+	tafsir: string;
+	tafsirName: string;
+    tafsirLanguage: string;
 }
 
 export const DEFAULT_SETTINGS: QuranSettings = {
@@ -14,8 +17,10 @@ export const DEFAULT_SETTINGS: QuranSettings = {
 	language: 'en',
 	fontSize: '2.0rem',
 	backgroundColor: 'var(--background-secondary)',
-	accentColor: 'var(--interactive-accent)'
-}
+	accentColor: 'var(--interactive-accent)',
+	tafsir: 'en-tafisr-ibn-kathir',
+	    tafsirName: 'Tafsir Ibn Kathir (Abridged)',
+	    tafsirLanguage: 'en'}
 
 interface LanguageResponse {
 	code: number;
@@ -42,7 +47,9 @@ interface EditionResponse {
 export class QuranSettingTab extends PluginSettingTab {
 	plugin: QuranPlugin;
 	languages: { code: string, name: string }[] = [];
+	tafsirLanguages: { code: string, name: string }[] = []; // New property
 	editions: Edition[] = [];
+	tafsirEditions: Edition[] = [];
 	isLoadingMetadata = false;
 
 	constructor(app: App, plugin: QuranPlugin) {
@@ -55,9 +62,13 @@ export class QuranSettingTab extends PluginSettingTab {
 		this.isLoadingMetadata = true;
 
 		try {
-			const langRes = await requestUrl('https://api.alquran.cloud/v1/edition/language');
+			// Fetch languages from Al Quran Cloud (still used for translations)
+			const langRes = await requestUrl('https://api.alquran.cloud/v1/edition/language').catch(e => {
+                console.error("Quran plugin: Failed to fetch languages.", e);
+                new Notice("Failed to fetch languages. Check your internet connection.");
+                throw e; // Re-throw to propagate to outer catch
+            });
 			const langJson = langRes.json as LanguageResponse;
-
 			if (langJson?.data) {
 				this.languages = langJson.data.map((lang: string) => ({
 					code: lang,
@@ -66,178 +77,1688 @@ export class QuranSettingTab extends PluginSettingTab {
 				this.languages.sort((a, b) => a.name.localeCompare(b.name));
 			}
 
-			const edRes = await requestUrl(`https://api.alquran.cloud/v1/edition/language/${this.plugin.settings.language}`);
-			const edJson = edRes.json as EditionResponse;
+			// Fetch translations for the selected language from Al Quran Cloud
+			const translationEditionUrl = `https://api.alquran.cloud/v1/edition/language/${this.plugin.settings.language}`;
+			const trRes = await requestUrl(translationEditionUrl).catch(e => {
+                console.error("Quran plugin: Failed to fetch translations.", e);
+                new Notice("Failed to fetch translations. Check your internet connection.");
+                throw e; // Re-throw
+            });
+			const trJson = trRes.json as EditionResponse;
 
-			if (edJson?.data) {
-				this.editions = edJson.data.filter((e: Edition) => e.format === 'text' && e.type === 'translation');
+			if (trJson?.data) {
+				this.editions = trJson.data.filter((e: Edition) => e.format === 'text' && e.type === 'translation');
 			}
 
-			this.display();
-		} catch {
-			new Notice("Failed to fetch translation metadata. Check your internet connection.");
-		} finally {
-			this.isLoadingMetadata = false;
-		}
-	}
-
-	getFullLanguageName(code: string): string {
-		const manualMap: Record<string, string> = {
-			'ar': 'Arabic', 'az': 'Azerbaijani', 'ba': 'Bashkir', 'be': 'Bengali',
-			'ber': 'Berber', 'bs': 'Bosnian', 'ce': 'Chechen', 'dv': 'Divehi',
-			'fa': 'Persian', 'ha': 'Hausa', 'ml': 'Malayalam', 'ps': 'Pashto',
-			'sd': 'Sindhi', 'si': 'Sinhala', 'sq': 'Albanian', 'sw': 'Swahili',
-			'tg': 'Tajik', 'tt': 'Tatar', 'ug': 'Uyghur', 'ur': 'Urdu', 'uz': 'Uzbek'
-		};
-		if (manualMap[code]) return manualMap[code] ?? code.toUpperCase();
-		try {
-			const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
-			return displayNames.of(code) || code.toUpperCase();
-		} catch {
-			return code.toUpperCase();
-		}
-	}
-
-	private resolveColor(color: string): string {
-		if (color.startsWith('var(')) {
-			const temp = document.createElement('div');
-			temp.addClass('is-hidden');
-			temp.style.color = color;
-			document.body.appendChild(temp);
-			const resolved = getComputedStyle(temp).color;
-			document.body.removeChild(temp);
-
-			const rgbMatch = resolved.match(/\d+/g);
-			if (rgbMatch && rgbMatch.length >= 3) {
-				const r = parseInt(rgbMatch[0] ?? "0");
-				const g = parseInt(rgbMatch[1] ?? "0");
-				const b = parseInt(rgbMatch[2] ?? "0");
-				return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+			// Fetch Tafsir editions from spa5k/tafsir_api via CDN
+			interface CdnTafsirEdition {
+				author_name: string;
+				id: number;
+				language_name: string;
+				name: string;
+				slug: string;
+				source: string;
 			}
-		}
-		return color.startsWith('#') ? color : '#000000';
-	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
+			const tafsirApiUrl = 'https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/editions.json';
+			const tafsirRes = await requestUrl(tafsirApiUrl).catch(e => {
+                console.error("Quran plugin: Failed to fetch Tafsir editions.", e);
+                new Notice("Failed to fetch Tafsir editions. Check your internet connection.");
+                throw e; // Re-throw
+            });
+			const tafsirJson = tafsirRes.json as CdnTafsirEdition[];
 
-		new Setting(containerEl)
-			.setName('Appearance')
-			.setHeading();
+			if (tafsirJson && Array.isArray(tafsirJson)) {
+				// Populate tafsirLanguages dropdown
+				const uniqueTafsirLanguages = Array.from(new Set(tafsirJson.map(t => t.language_name)));
+				this.tafsirLanguages = uniqueTafsirLanguages.map(langName => {
+					// Find the corresponding language code from the main languages list or use langName as code if not found
+					const code = this.languages.find(l => l.name.toLowerCase() === langName.toLowerCase())?.code || langName.toLowerCase();
+					return { code: code, name: langName.charAt(0).toUpperCase() + langName.slice(1) };
+				}).sort((a, b) => a.name.localeCompare(b.name));
 
-		new Setting(containerEl)
-			.setName('Arabic font size')
-			.setDesc('Adjust the size of the verse in the verse card.')
-			.addSlider(slider => {
-				const currentVal = parseFloat(this.plugin.settings.fontSize) || 2.0;
-				slider
-					.setLimits(1, 5, 0.1)
-					.setValue(currentVal)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.fontSize = `${value}rem`;
+				// Ensure selected tafsirLanguage is valid, default if not
+				const currentTafsirLangCode = this.plugin.settings.tafsirLanguage;
+				if (!this.tafsirLanguages.some(l => l.code === currentTafsirLangCode)) {
+					this.plugin.settings.tafsirLanguage = this.tafsirLanguages.length > 0 ? this.tafsirLanguages[0]!.code : 'en';
+					await this.plugin.saveSettings();
+				}
+
+				// Filter tafsirs by the *tafsirLanguage* setting
+				this.tafsirEditions = tafsirJson
+					.filter(t => t.language_name.toLowerCase() === this.getFullLanguageName(this.plugin.settings.tafsirLanguage).toLowerCase())
+					.map(t => ({
+						identifier: t.slug,
+						language: t.language_name,
+						name: t.name,
+						englishName: t.author_name, // Using author_name as englishName for display
+						format: 'text',
+						type: 'tafsir',
+						direction: null // Direction not provided by this API, can be set later if needed
+					}));
+				// Set default tafsir and its name if available
+				if (this.tafsirEditions.length > 0) {
+					if (!this.plugin.settings.tafsir || !this.tafsirEditions.some(t => t.identifier === this.plugin.settings.tafsir)) {
+						this.plugin.settings.tafsir = this.tafsirEditions[0]!.identifier;
+						this.plugin.settings.tafsirName = this.tafsirEditions[0]!.name;
 						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName('Background color')
-			.setDesc('Choose a custom background color for the verse card.')
-			.addExtraButton(button => button
-				.setIcon('reset')
-				.setTooltip('Reset to default background')
-				.onClick(async () => {
-					this.plugin.settings.backgroundColor = DEFAULT_SETTINGS.backgroundColor;
-					await this.plugin.saveSettings();
-					this.display();
-				}))
-			.addColorPicker(color => color
-				.setValue(this.resolveColor(this.plugin.settings.backgroundColor))
-				.onChange(async (value) => {
-					this.plugin.settings.backgroundColor = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Accent color')
-			.setDesc('Choose a custom accent color for the left border.')
-			.addExtraButton(button => button
-				.setIcon('reset')
-				.setTooltip('Reset to default accent color')
-				.onClick(async () => {
-					this.plugin.settings.accentColor = DEFAULT_SETTINGS.accentColor;
-					await this.plugin.saveSettings();
-					this.display();
-				}))
-			.addColorPicker(color => color
-				.setValue(this.resolveColor(this.plugin.settings.accentColor))
-				.onChange(async (value) => {
-					this.plugin.settings.accentColor = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Translation')
-			.setHeading();
-
-		new Setting(containerEl)
-			.setName('Translation language')
-			.setDesc('Select the language for the verse translation.')
-			.addDropdown(dropdown => {
-				if (this.languages.length > 0) {
-					const options: Record<string, string> = {};
-					this.languages.forEach(l => options[l.code] = l.name);
-					dropdown
-						.addOptions(options)
-						.setValue(this.plugin.settings.language)
-						.onChange(async (val) => {
-							this.plugin.settings.language = val;
-							this.editions = [];
-							try {
-								const edRes = await requestUrl(`https://api.alquran.cloud/v1/edition/language/${val}`);
-								const edJson = edRes.json as EditionResponse;
-
-								const data = edJson?.data ?? [];
-								const filtered = data.filter(e => e.format === 'text' && e.type === 'translation');
-
-								if (filtered.length > 0) {
-									this.plugin.settings.translation = filtered[0]!.identifier;
-								}
-							} catch {
-								console.error("Quran plugin: Auto-edition failed");
-							}
-							await this.plugin.saveSettings();
-							await this.fetchMetadata();
-						});
+					} else {
+						this.plugin.settings.tafsirName = this.tafsirEditions.find(t => t.identifier === this.plugin.settings.tafsir)?.name || this.plugin.settings.tafsir;
+					}
 				} else {
-					dropdown.addOption('loading', 'Loading languages...');
-					dropdown.setDisabled(true);
+					this.plugin.settings.tafsir = '';
+					this.plugin.settings.tafsirName = '';
+					await this.plugin.saveSettings();
 				}
-			});
+			}
 
-		new Setting(containerEl)
-			.setName('Translation edition')
-			.setDesc('Select a specific translation source.')
-			.addDropdown(dropdown => {
-				if (this.editions.length > 0) {
-					const options: Record<string, string> = {};
-					this.editions.forEach(e => options[e.identifier] = e.name);
-					dropdown
-						.addOptions(options)
-						.setValue(this.plugin.settings.translation)
-						.onChange(async (val) => {
-							this.plugin.settings.translation = val;
-							await this.plugin.saveSettings();
-						});
-				} else {
-					dropdown.addOption('loading', 'Loading editions...');
-					dropdown.setDisabled(true);
-				}
-			});
+ // This is the end of the if (fontJson) block
 
-		if (this.languages.length === 0) {
-			void this.fetchMetadata();
-		}
-	}
-}
+                                		} catch (error) {
+
+                            
+
+                                            
+
+                            
+
+                                			console.error('Quran plugin: An unexpected error occurred during metadata fetch:', error);
+
+                            
+
+                                            
+
+                            
+
+                                			new Notice('An unexpected error occurred. Please check the console for details.');
+
+                            
+
+                                            
+
+                            
+
+                                		} finally {
+
+                            
+
+                                            
+
+                            
+
+                                			this.isLoadingMetadata = false;
+
+                            
+
+                                            
+
+                            
+
+                                			this.display(); // Refresh the settings tab
+
+                            
+
+                                            
+
+                            
+
+                                		}
+
+                            
+
+                                            
+
+                            
+
+                                	}
+
+                            
+
+                                            
+
+                            
+
+                                	private getFullLanguageName(code: string): string {
+
+                            
+
+                                            
+
+                            
+
+                                		const lang = this.languages.find(l => l.code === code);
+
+                            
+
+                                            
+
+                            
+
+                                		return lang ? lang.name : code;
+
+                            
+
+                                            
+
+                            
+
+                                	}
+
+                            
+
+                                            
+
+                            
+
+                                	private resolveColor(color: string): string {
+
+                            
+
+                                            
+
+                            
+
+                                		if (color.startsWith('var(')) {
+
+                            
+
+                                            
+
+                            
+
+                                			const temp = document.createElement('div');
+
+                            
+
+                                            
+
+                            
+
+                                			temp.addClass('is-hidden');
+
+                            
+
+                                            
+
+                            
+
+                                			temp.style.color = color;
+
+                            
+
+                                            
+
+                            
+
+                                			document.body.appendChild(temp);
+
+                            
+
+                                            
+
+                            
+
+                                			const resolved = getComputedStyle(temp).color;
+
+                            
+
+                                            
+
+                            
+
+                                			document.body.removeChild(temp);
+
+                            
+
+                                            
+
+                            
+
+                                
+
+                            
+
+                                            
+
+                            
+
+                                			const rgbMatch = resolved.match(/\d+/g);
+
+                            
+
+                                            
+
+                            
+
+                                			if (rgbMatch && rgbMatch.length >= 3) {
+
+                            
+
+                                            
+
+                            
+
+                                				const r = parseInt(rgbMatch[0] ?? "0");
+
+                            
+
+                                            
+
+                            
+
+                                				const g = parseInt(rgbMatch[1] ?? "0");
+
+                            
+
+                                            
+
+                            
+
+                                				const b = parseInt(rgbMatch[2] ?? "0");
+
+                            
+
+                                            
+
+                            
+
+                                				return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+
+                            
+
+                                            
+
+                            
+
+                                			}
+
+                            
+
+                                            
+
+                            
+
+                                		}
+
+                            
+
+                                            
+
+                            
+
+                                		return color.startsWith('#') ? color : '#000000';
+
+                            
+
+                                            
+
+                            
+
+                                	}
+
+                            
+
+                                            
+
+                            
+
+                                
+
+                            
+
+                                            
+
+                            
+
+                                	display(): void {
+
+                            
+
+                                            
+
+                            
+
+                                		const { containerEl } = this;
+
+                            
+
+                                            
+
+                            
+
+                                		containerEl.empty();
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Appearance')
+
+                            
+
+                                            
+
+                            
+
+                                			.setHeading();
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+                            
+
+                                            
+
+                            
+
+                                			.setName('Arabic font size')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Adjust the size of the verse in the verse card.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addSlider(slider => {
+
+                            
+
+                                            
+
+                            
+
+                                				const currentVal = parseFloat(this.plugin.settings.fontSize) || 2.0;
+
+                            
+
+                                            
+
+                            
+
+                                				slider
+
+                            
+
+                                            
+
+                            
+
+                                					.setLimits(1, 5, 0.1)
+
+                            
+
+                                            
+
+                            
+
+                                					.setValue(currentVal)
+
+                            
+
+                                            
+
+                            
+
+                                					.setDynamicTooltip()
+
+                            
+
+                                            
+
+                            
+
+                                					.onChange(async (value) => {
+
+                            
+
+                                            
+
+                            
+
+                                						this.plugin.settings.fontSize = `${value}rem`;
+
+                            
+
+                                            
+
+                            
+
+                                						await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                					});
+
+                            
+
+                                            
+
+                            
+
+                                			});
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Background color')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Choose a custom background color for the verse card.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addExtraButton(button => button
+
+                            
+
+                                            
+
+                            
+
+                                				.setIcon('reset')
+
+                            
+
+                                            
+
+                            
+
+                                				.setTooltip('Reset to default background')
+
+                            
+
+                                            
+
+                            
+
+                                				.onClick(async () => {
+
+                            
+
+                                            
+
+                            
+
+                                					this.plugin.settings.backgroundColor = DEFAULT_SETTINGS.backgroundColor;
+
+                            
+
+                                            
+
+                            
+
+                                					await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                					this.display();
+
+                            
+
+                                            
+
+                            
+
+                                				}))
+
+                            
+
+                                            
+
+                            
+
+                                			.addColorPicker(color => color
+
+                            
+
+                                            
+
+                            
+
+                                				.setValue(this.resolveColor(this.plugin.settings.backgroundColor))
+
+                            
+
+                                            
+
+                            
+
+                                				.onChange(async (value) => {
+
+                            
+
+                                            
+
+                            
+
+                                					this.plugin.settings.backgroundColor = value;
+
+                            
+
+                                            
+
+                            
+
+                                					await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                				}));
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Accent color')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Choose a custom accent color for the left border.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addExtraButton(button => button
+
+                            
+
+                                            
+
+                            
+
+                                				.setIcon('reset')
+
+                            
+
+                                            
+
+                            
+
+                                				.setTooltip('Reset to default accent color')
+
+                            
+
+                                            
+
+                            
+
+                                				.onClick(async () => {
+
+                            
+
+                                            
+
+                            
+
+                                					this.plugin.settings.accentColor = DEFAULT_SETTINGS.accentColor;
+
+                            
+
+                                            
+
+                            
+
+                                					await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                					this.display();
+
+                            
+
+                                            
+
+                            
+
+                                				}))
+
+                            
+
+                                            
+
+                            
+
+                                			.addColorPicker(color => color
+
+                            
+
+                                            
+
+                            
+
+                                				.setValue(this.resolveColor(this.plugin.settings.accentColor))
+
+                            
+
+                                            
+
+                            
+
+                                				.onChange(async (value) => {
+
+                            
+
+                                            
+
+                            
+
+                                					this.plugin.settings.accentColor = value;
+
+                            
+
+                                            
+
+                            
+
+                                					await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                				}));
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Translation')
+
+                            
+
+                                            
+
+                            
+
+                                			.setHeading();
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Translation language')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Select the language for the verse translation.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addDropdown(dropdown => {
+
+                            
+
+                                            
+
+                            
+
+                                				if (this.languages.length > 0) {
+
+                            
+
+                                            
+
+                            
+
+                                					const options: Record<string, string> = {};
+
+                            
+
+                                            
+
+                            
+
+                                					this.languages.forEach(l => options[l.code] = l.name);
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown
+
+                            
+
+                                            
+
+                            
+
+                                						.addOptions(options)
+
+                            
+
+                                            
+
+                            
+
+                                						.setValue(this.plugin.settings.language)
+
+                            
+
+                                            
+
+                            
+
+                                						.onChange(async (val) => {
+
+                            
+
+                                            
+
+                            
+
+                                							this.plugin.settings.language = val;
+
+                            
+
+                                            
+
+                            
+
+                                							this.editions = []; // Clear translations list, will be refetched by fetchMetadata
+
+                            
+
+                                            
+
+                            
+
+                                							// No direct update to tafsirEditions based on translation language change
+
+                            
+
+                                            
+
+                            
+
+                                							try {
+
+                            
+
+                                            
+
+                            
+
+                                								const trRes = await requestUrl(`https://api.alquran.cloud/v1/edition/language/${val}`);
+
+                            
+
+                                            
+
+                            
+
+                                								const trJson = trRes.json as EditionResponse;
+
+                            
+
+                                            
+
+                            
+
+                                								if (trJson?.data) {
+
+                            
+
+                                            
+
+                            
+
+                                									const filteredTranslations = trJson.data.filter(e => e.format === 'text' && e.type === 'translation');
+
+                            
+
+                                            
+
+                            
+
+                                									if (filteredTranslations.length > 0) {
+
+                            
+
+                                            
+
+                            
+
+                                										this.plugin.settings.translation = filteredTranslations[0]!.identifier;
+
+                            
+
+                                            
+
+                            
+
+                                									}
+
+                            
+
+                                            
+
+                            
+
+                                								}
+
+                            
+
+                                            
+
+                            
+
+                                							} catch (error) {
+
+                            
+
+                                            
+
+                            
+
+                                								console.error("Quran plugin: Auto-translation selection failed", error);
+
+                            
+
+                                            
+
+                            
+
+                                								new Notice("Failed to auto-select translation. Check your internet connection.");
+
+                            
+
+                                            
+
+                            
+
+                                							}
+
+                            
+
+                                            
+
+                            
+
+                                							await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                							await this.fetchMetadata(); // Re-fetch all metadata to update dropdowns
+
+                            
+
+                                            
+
+                            
+
+                                						});
+
+                            
+
+                                            
+
+                            
+
+                                				} else {
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.addOption('loading', 'Loading languages...');
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.setDisabled(true);
+
+                            
+
+                                            
+
+                            
+
+                                				}
+
+                            
+
+                                            
+
+                            
+
+                                			});
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Translation edition')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Select a specific translation source.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addDropdown(dropdown => {
+
+                            
+
+                                            
+
+                            
+
+                                				if (this.editions.length > 0) {
+
+                            
+
+                                            
+
+                            
+
+                                					const options: Record<string, string> = {};
+
+                            
+
+                                            
+
+                            
+
+                                					this.editions.forEach(e => options[e.identifier] = e.name);
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown
+
+                            
+
+                                            
+
+                            
+
+                                						.addOptions(options)
+
+                            
+
+                                            
+
+                            
+
+                                						.setValue(this.plugin.settings.translation)
+
+                            
+
+                                            
+
+                            
+
+                                						.onChange(async (val) => {
+
+                            
+
+                                            
+
+                            
+
+                                							this.plugin.settings.translation = val;
+
+                            
+
+                                            
+
+                            
+
+                                							await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                						});
+
+                            
+
+                                            
+
+                            
+
+                                				} else {
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.addOption('loading', 'Loading editions...');
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.setDisabled(true);
+
+                            
+
+                                            
+
+                            
+
+                                				}
+
+                            
+
+                                            
+
+                            
+
+                                			});
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Tafsir/commentary')
+
+                            
+
+                                            
+
+                            
+
+                                			.setHeading();
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Tafsir language')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Select the language for the Tafsir/commentary.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addDropdown(dropdown => {
+
+                            
+
+                                            
+
+                            
+
+                                				if (this.tafsirLanguages.length > 0) { // Use tafsirLanguages
+
+                            
+
+                                            
+
+                            
+
+                                					const options: Record<string, string> = {};
+
+                            
+
+                                            
+
+                            
+
+                                					this.tafsirLanguages.forEach(l => options[l.code] = l.name);
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown
+
+                            
+
+                                            
+
+                            
+
+                                						.addOptions(options)
+
+                            
+
+                                            
+
+                            
+
+                                						.setValue(this.plugin.settings.tafsirLanguage)
+
+                            
+
+                                            
+
+                            
+
+                                						.onChange(async (val) => {
+
+                            
+
+                                            
+
+                            
+
+                                							this.plugin.settings.tafsirLanguage = val;
+
+                            
+
+                                            
+
+                            
+
+                                							await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                							await this.fetchMetadata(); // Re-fetch all metadata to update Tafsir edition dropdown
+
+                            
+
+                                            
+
+                            
+
+                                						});
+
+                            
+
+                                            
+
+                            
+
+                                				} else {
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.addOption('loading', 'Loading languages...');
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.setDisabled(true);
+
+                            
+
+                                            
+
+                            
+
+                                				}
+
+                            
+
+                                            
+
+                            
+
+                                			});
+
+                            
+
+                                            
+
+                            
+
+                                		// Tafsir edition dropdown (always visible)
+
+                            
+
+                                            
+
+                            
+
+                                		new Setting(containerEl)
+
+                            
+
+                                            
+
+                            
+
+                                			.setName('Tafsir edition')
+
+                            
+
+                                            
+
+                            
+
+                                			.setDesc('Select a specific Tafsir source.')
+
+                            
+
+                                            
+
+                            
+
+                                			.addDropdown(dropdown => {
+
+                            
+
+                                            
+
+                            
+
+                                				if (this.tafsirEditions.length > 0) {
+
+                            
+
+                                            
+
+                            
+
+                                					const options: Record<string, string> = {};
+
+                            
+
+                                            
+
+                            
+
+                                					this.tafsirEditions.forEach(e => options[e.identifier] = e.name);
+
+                            
+
+                                            
+
+                            
+
+                                					// Ensure the current tafsir setting is still valid, if not, default to the first available
+
+                            
+
+                                            
+
+                            
+
+                                					if (!this.plugin.settings.tafsir || !options[this.plugin.settings.tafsir]) {
+
+                            
+
+                                            
+
+                            
+
+                                						this.plugin.settings.tafsir = this.tafsirEditions[0]!.identifier;
+
+                            
+
+                                            
+
+                            
+
+                                						                        this.plugin.settings.tafsirName = this.tafsirEditions[0]!.name; // Set name too
+
+                            
+
+                                            
+
+                            
+
+                                						                        void this.plugin.saveSettings();					}
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown
+
+                            
+
+                                            
+
+                            
+
+                                						.addOptions(options)
+
+                            
+
+                                            
+
+                            
+
+                                						.setValue(this.plugin.settings.tafsir)
+
+                            
+
+                                            
+
+                            
+
+                                						.onChange(async (val) => {
+
+                            
+
+                                            
+
+                            
+
+                                							this.plugin.settings.tafsir = val;
+
+                            
+
+                                            
+
+                            
+
+                                							this.plugin.settings.tafsirName = this.tafsirEditions.find(t => t.identifier === val)?.name || val;
+
+                            
+
+                                            
+
+                            
+
+                                							await this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                						});
+
+                            
+
+                                            
+
+                            
+
+                                				} else {
+
+                            
+
+                                            
+
+                            
+
+                                					// Display message when no Tafsirs are available for the selected Tafsir language
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.addOption('', 'No Tafsirs available for this language');
+
+                            
+
+                                            
+
+                            
+
+                                					dropdown.setDisabled(true);
+
+                            
+
+                                            
+
+                            
+
+                                					// Also ensure the setting is cleared if no tafsirs are available
+
+                            
+
+                                            
+
+                            
+
+                                					if (this.plugin.settings.tafsir !== '') {
+
+                            
+
+                                            
+
+                            
+
+                                						this.plugin.settings.tafsir = '';
+
+                            
+
+                                            
+
+                            
+
+                                                        this.plugin.settings.tafsirName = '';
+
+                            
+
+                                            
+
+                            
+
+                                						void this.plugin.saveSettings();
+
+                            
+
+                                            
+
+                            
+
+                                					}
+
+                            
+
+                                            
+
+                            
+
+                                				}
+
+                            
+
+                                            
+
+                            
+
+                                			});
+
+                            
+
+                                            
+
+                            
+
+
+
+                            
+
+                                            
+
+                            
+
+                                	}
+
+                            
+
+                                            
+
+                            
+
+                                }

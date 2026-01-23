@@ -1,5 +1,6 @@
-import { Plugin, requestUrl, setIcon, MarkdownRenderChild } from 'obsidian';
-import { QuranSettings, DEFAULT_SETTINGS, QuranSettingTab } from './settings';
+import "../styles.css";
+import { App, MarkdownRenderChild, Modal, Notice, Plugin, requestUrl, setIcon } from 'obsidian';
+import { DEFAULT_SETTINGS, QuranSettingTab, QuranSettings } from './settings';
 
 interface AyahData {
 	number: number;
@@ -24,13 +25,59 @@ interface ApiResponse {
 	data: AyahData;
 }
 
+// New interfaces for spa5k/tafsir_api response (CDN version)
+interface CdnTafsirAyah {
+    ayah: number;
+    surah: number;
+    text: string;
+}
+interface CdnTafsirSurahResponse {
+    ayahs: CdnTafsirAyah[];
+}
+
+class TafsirModal extends Modal {
+    constructor(app: App, private tafsirAyahData: CdnTafsirAyah, private tafsirName: string) {
+        super(app);
+    }
+
+    onOpen() {
+        const { contentEl, titleEl } = this;
+        titleEl.setText(`Commentary - ${this.tafsirName}`);
+
+        // Assuming LTR for English Tafsirs in the modal
+        const isTafsirRtl = false;
+
+        contentEl.createEl('p', {
+            text: this.tafsirAyahData.text,
+            attr: { dir: isTafsirRtl ? "rtl" : "ltr" },
+            cls: isTafsirRtl ? "quran-rtl" : "quran-ltr"
+        });
+
+        // The surah name and number are not directly in CdnTafsirAyah,
+        // so we'll just show Surah number and Ayah number from the data.
+        contentEl.createEl('small', {
+            text: `— Surah ${this.tafsirAyahData.surah}, Ayah ${this.tafsirAyahData.ayah}`,
+            cls: 'quran-meta-modal'
+        });
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+
 export default class QuranPlugin extends Plugin {
 	settings: QuranSettings;
 
 	async onload() {
 		await this.loadSettings();
 		this.applyGlobalStyles();
-		this.addSettingTab(new QuranSettingTab(this.app, this));
+
+        // Instantiate settings tab first, then trigger its fetchMetadata
+        const settingTab = new QuranSettingTab(this.app, this);
+        this.addSettingTab(settingTab);
+        await settingTab.fetchMetadata(); // Ensure metadata is loaded
 
 		this.registerMarkdownCodeBlockProcessor("quran-verse", async (source, el, ctx) => {
 			const renderVerse = async () => {
@@ -38,13 +85,11 @@ export default class QuranPlugin extends Plugin {
 
 				const container = el.createDiv({ cls: "quran-verse-card" });
 
-				// Header Section
 				const headerEl = container.createDiv({ cls: "quran-header" });
 				const headerIconEl = headerEl.createSpan({ cls: "quran-header-icon" });
 				setIcon(headerIconEl, "book-open");
 				headerEl.createDiv({ cls: "quran-header-title", text: "Holy Quran" });
 
-				// Render Skeleton Loading State
 				const skeletonArabic = container.createDiv({ cls: "quran-skeleton quran-skeleton-arabic" });
 				const skeletonDivider = container.createDiv({ cls: "quran-skeleton-divider" });
 				const skeletonEnglish = container.createDiv({ cls: "quran-skeleton quran-skeleton-english" });
@@ -67,7 +112,6 @@ export default class QuranPlugin extends Plugin {
 
 					if (arJson.code !== 200 || trJson.code !== 200) throw new Error("Edition API Error");
 
-					// Success: Remove skeletons and divider
 					skeletonArabic.remove();
 					skeletonDivider.remove();
 					skeletonEnglish.remove();
@@ -81,14 +125,13 @@ export default class QuranPlugin extends Plugin {
 						return num.toString().replace(/\d/g, (d) => digits[parseInt(d)] ?? d);
 					};
 
-					const endOfAyahSymbol = "\u06DD";
-					const fullArabicText = `${arData.text} ${endOfAyahSymbol}${toArabicDigits(arData.numberInSurah)}`;
+					const ayahNumberInArabic = toArabicDigits(arData.numberInSurah);
 
-					container.createDiv({
+					const quranArabicDiv = container.createDiv({
 						cls: "quran-arabic",
-						text: fullArabicText,
 						attr: { dir: "rtl" }
 					});
+					quranArabicDiv.createSpan({ text: arData.text + ' ۝' + ayahNumberInArabic });
 
 					const isTranslationRtl = trData.edition.direction === "rtl";
 
@@ -98,13 +141,9 @@ export default class QuranPlugin extends Plugin {
 						attr: { dir: isTranslationRtl ? "rtl" : "ltr" }
 					});
 
-					// Footer Container
 					const footerEl = container.createDiv({ cls: "quran-footer" });
-
-					// Action buttons on the left
 					const actionsEl = footerEl.createDiv({ cls: "quran-actions" });
 
-					// Metadata on the right
 					footerEl.createDiv({
 						cls: "quran-meta",
 						text: `— ${trData.surah.englishName} (${trData.surah.number}), Ayah ${trData.numberInSurah}`
@@ -117,21 +156,70 @@ export default class QuranPlugin extends Plugin {
 					});
 					const reloadIconEl = reloadBtn.createSpan({ cls: "quran-icon" });
 					setIcon(reloadIconEl, "refresh-cw");
-					reloadBtn.addEventListener("click", () => {
+					reloadBtn.addEventListener("click", (event) => {
 						void renderVerse();
 					});
 
-					// Link Button
+					// Tafsir Button (moved and icon changed)
+					const tafsirBtn = actionsEl.createEl("button", {
+						cls: "quran-btn",
+						attr: { "aria-label": "Show commentary" }
+					});
+					const tafsirIconEl = tafsirBtn.createSpan({ cls: "quran-icon" });
+					setIcon(tafsirIconEl, "lightbulb"); // Changed icon
+
+					tafsirBtn.addEventListener("click", (event) => {
+						const handleClick = async () => {
+							setIcon(tafsirIconEl, "loader");
+							tafsirBtn.disabled = true;
+
+							try {
+								if (!this.settings.tafsir) {
+									new Notice("No tafsir edition selected. Please select one in plugin settings.");
+									return;
+								}
+
+								const surahNum = arData.surah.number;
+								const ayahNum = arData.numberInSurah;
+
+                                // Fetch the entire surah's tafsir from CDN
+								const newTafsirApiUrl = `https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${this.settings.tafsir}/${surahNum}.json`;
+								const tafsirRes = await requestUrl(newTafsirApiUrl);
+								const tafsirJson = tafsirRes.json as CdnTafsirSurahResponse;
+
+								if (tafsirJson && tafsirJson.ayahs && Array.isArray(tafsirJson.ayahs)) {
+                                    const targetAyahTafsir = tafsirJson.ayahs.find(a => a.ayah === ayahNum);
+
+                                    if (targetAyahTafsir) {
+                                        new TafsirModal(this.app, targetAyahTafsir, this.settings.tafsirName).open();
+                                    } else {
+                                        new Notice(`Tafsir not found for Ayah ${ayahNum} in Surah ${surahNum}.`);
+                                    }
+								} else {
+									throw new Error("Tafsir API Error: Invalid response structure");
+								}
+							} catch (err) {
+								console.error("Failed to fetch Tafsir:", err);
+								new Notice("Failed to load commentary. Check if a valid tafsir edition is selected.");
+							} finally {
+								setIcon(tafsirIconEl, "lightbulb"); // Changed icon
+								tafsirBtn.disabled = false;
+							}
+						};
+						void handleClick();
+					});
+
+					// Link Button (original position)
 					const linkBtn = actionsEl.createEl("button", {
 						cls: "quran-btn",
 						attr: { "aria-label": "Open in browser" }
 					});
 					const linkIconEl = linkBtn.createSpan({ cls: "quran-icon" });
 					setIcon(linkIconEl, "link");
-					linkBtn.addEventListener("click", () => {
+					linkBtn.addEventListener("click", (event) => {
 						const surahNum = arData.surah.number;
 						const ayahNum = arData.numberInSurah;
-						window.open(`https://alquran.cloud/surah/${surahNum}/${this.settings.translation}#${ayahNum}`, "_blank");
+						window.open(`https://quran.com/${surahNum}/${ayahNum}`, "_blank");
 					});
 
 				} catch (err) {
@@ -177,6 +265,8 @@ export default class QuranPlugin extends Plugin {
 		await this.saveData(this.settings);
 		this.applyGlobalStyles();
 	}
+
+
 
 	onunload() {
 		this.removeGlobalStyles();
