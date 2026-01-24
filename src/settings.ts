@@ -103,7 +103,7 @@ export class QuranSettingTab extends PluginSettingTab {
 			const tafsirApiUrl = 'https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/editions.json';
 			const tafsirRes = await requestUrl(tafsirApiUrl).catch(e => {
                 console.error("Quran plugin: Failed to fetch Tafsir editions.", e);
-                new Notice("Failed to fetch Tafsir editions. Check your internet connection.");
+                new Notice("Failed to fetch tafsir editions. Check your internet connection.");
                 throw e; // Re-throw
             });
 			const tafsirJson = tafsirRes.json as CdnTafsirEdition[];
@@ -363,7 +363,7 @@ export class QuranSettingTab extends PluginSettingTab {
 
 										new Setting(containerEl)
 											.setName('Tafsir language')
-											.setDesc('Select the language for the Tafsir/commentary.')
+											.setDesc('Select the language for the tafsir/commentary.')
 											.addDropdown(dropdown => {
 												if (this.tafsirLanguages.length > 0) { // Use tafsirLanguages
 													const options: Record<string, string> = {};
@@ -382,39 +382,57 @@ export class QuranSettingTab extends PluginSettingTab {
 												}
 											});
 
-										// Tafsir edition dropdown (always visible)
-										new Setting(containerEl)
-											.setName('Tafsir edition')
-											.setDesc('Select a specific Tafsir source.')
-											.addDropdown(dropdown => {
-												if (this.tafsirEditions.length > 0) {
-													const options: Record<string, string> = {};
-													this.tafsirEditions.forEach(e => options[e.identifier] = e.name);
-													// Ensure the current tafsir setting is still valid, if not, default to the first available
-													if (!this.plugin.settings.tafsir || !options[this.plugin.settings.tafsir]) {
-														this.plugin.settings.tafsir = this.tafsirEditions[0]!.identifier;
-														this.plugin.settings.tafsirName = this.tafsirEditions[0]!.name; // Set name too
-														void this.plugin.saveSettings();
-													}
-													dropdown
-														.addOptions(options)
-														.setValue(this.plugin.settings.tafsir)
-														.onChange(async (val) => {
-															this.plugin.settings.tafsir = val;
-															this.plugin.settings.tafsirName = this.tafsirEditions.find(t => t.identifier === val)?.name || val;
-															await this.plugin.saveSettings();
-														});
-												} else {
-													// Display message when no Tafsirs are available for the selected Tafsir language
-													dropdown.addOption('', 'No Tafsirs available for this language');
-													dropdown.setDisabled(true);
-													// Also ensure the setting is cleared if no tafsirs are available
-													if (this.plugin.settings.tafsir !== '') {
-														this.plugin.settings.tafsir = '';
-														this.plugin.settings.tafsirName = '';
-														void this.plugin.saveSettings();
-													}
-												}
-											});
-	}
-}
+										                                        // Tafsir edition dropdown (always visible)
+										                                        new Setting(containerEl)
+										                                            .setName('Tafsir edition')
+										                                            .setDesc('Select a tafsir source.')
+										                                            .addDropdown(dropdown => {
+										                                                if (this.tafsirEditions.length > 0) {
+										                                                    const options: Record<string, string> = {};
+										                                                    this.tafsirEditions.forEach(e => options[e.identifier] = e.name);
+										                                                    // Ensure the current tafsir setting is still valid, if not, default to the first available
+										                                                    if (!this.plugin.settings.tafsir || !options[this.plugin.settings.tafsir]) {
+										                                                        this.plugin.settings.tafsir = this.tafsirEditions[0]!.identifier;
+										                                                        this.plugin.settings.tafsirName = this.tafsirEditions[0]!.name; // Set name too
+										                                                        void this.plugin.saveSettings();
+										                                                    }
+										                                                    dropdown
+										                                                        .addOptions(options)
+										                                                        .setValue(this.plugin.settings.tafsir)
+										                                                        .onChange(async (val) => {
+										                                                            this.plugin.settings.tafsir = val;
+										                                                            this.plugin.settings.tafsirName = this.tafsirEditions.find(t => t.identifier === val)?.name || val;
+										                                                            await this.plugin.saveSettings();
+										                                                        });
+										                                                } else {
+										                                                    // Display message when no Tafsirs are available for the selected Tafsir language
+										                                                    dropdown.addOption('', 'No tafsirs available for this language');
+										                                                    dropdown.setDisabled(true);
+										                                                    // Also ensure the setting is cleared if no tafsirs are available
+										                                                    if (this.plugin.settings.tafsir !== '') {
+										                                                        this.plugin.settings.tafsir = '';
+										                                                        this.plugin.settings.tafsirName = '';
+										                                                        void this.plugin.saveSettings();
+										                                                    }
+										                                                }
+										                                            });
+										
+										        new Setting(containerEl)
+										            .setName('Attributions')
+										            .setHeading();
+										
+										        new Setting(containerEl)
+										            .setName('Al Quran Cloud')
+										            .setDesc(createFragment(frag => {
+										                frag.appendText('API for Quranic data. ');
+										                frag.createEl('a', { text: 'https://alquran.cloud/', href: 'https://alquran.cloud/' });
+										            }));
+										
+										        new Setting(containerEl)
+										            .setName('spa5k/tafsir_api')
+										            .setDesc(createFragment(frag => {
+										                frag.appendText('API for Tafsir (commentary) data. ');
+										                frag.createEl('a', { text: 'https://github.com/spa5k/tafsir_api', href: 'https://github.com/spa5k/tafsir_api' });
+										            }));
+										    }
+										}
