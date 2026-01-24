@@ -2,6 +2,8 @@ import "../styles.css";
 import { App, MarkdownRenderChild, Modal, Notice, Plugin, requestUrl, setIcon } from 'obsidian';
 import { DEFAULT_SETTINGS, QuranSettingTab, QuranSettings } from './settings';
 
+// region: --- Interfaces and Type Guards ---
+
 interface AyahData {
 	number: number;
 	text: string;
@@ -25,15 +27,65 @@ interface ApiResponse {
 	data: AyahData;
 }
 
-// New interfaces for spa5k/tafsir_api response (CDN version)
 interface CdnTafsirAyah {
     ayah: number;
     surah: number;
     text: string;
 }
+
 interface CdnTafsirSurahResponse {
     ayahs: CdnTafsirAyah[];
 }
+
+function isAyahData(data: unknown): data is AyahData {
+    const d = data as AyahData;
+    return (
+        typeof d === 'object' && d !== null &&
+        typeof d.number === 'number' &&
+        typeof d.text === 'string' &&
+        typeof d.numberInSurah === 'number' &&
+        typeof d.surah === 'object' && d.surah !== null &&
+        typeof d.surah.number === 'number' &&
+        typeof d.surah.name === 'string' &&
+        typeof d.surah.englishName === 'string' &&
+        typeof d.edition === 'object' && d.edition !== null &&
+        typeof d.edition.identifier === 'string' &&
+        typeof d.edition.language === 'string' &&
+        typeof d.edition.name === 'string' &&
+        (typeof d.edition.direction === 'string' || d.edition.direction === null)
+    );
+}
+
+function isApiResponse(data: unknown): data is ApiResponse {
+    const d = data as ApiResponse;
+    return (
+        typeof d === 'object' && d !== null &&
+        typeof d.code === 'number' &&
+        typeof d.status === 'string' &&
+        isAyahData(d.data)
+    );
+}
+
+function isCdnTafsirAyah(data: unknown): data is CdnTafsirAyah {
+    const d = data as CdnTafsirAyah;
+    return (
+        typeof d === 'object' && d !== null &&
+        typeof d.ayah === 'number' &&
+        typeof d.surah === 'number' &&
+        typeof d.text === 'string'
+    );
+}
+
+function isCdnTafsirSurahResponse(data: unknown): data is CdnTafsirSurahResponse {
+    const d = data as CdnTafsirSurahResponse;
+    return (
+        typeof d === 'object' && d !== null &&
+        Array.isArray(d.ayahs) &&
+        d.ayahs.every(isCdnTafsirAyah)
+    );
+}
+
+// endregion
 
 class TafsirModal extends Modal {
     constructor(app: App, private tafsirAyahData: CdnTafsirAyah, private tafsirName: string) {
@@ -97,8 +149,10 @@ export default class QuranPlugin extends Plugin {
 
 				try {
 					const randomRes = await requestUrl(`https://api.alquran.cloud/v1/ayah/${Math.floor(Math.random() * 6236) + 1}`);
-					const randomJson = randomRes.json as ApiResponse;
-					if (randomJson.code !== 200) throw new Error("Random API Error");
+					const randomJson = randomRes.json;
+					if (!isApiResponse(randomJson) || randomJson.code !== 200) {
+						throw new Error("Random API Error: Invalid response structure");
+					}
 
 					const reference = randomJson.data.number;
 
@@ -107,10 +161,12 @@ export default class QuranPlugin extends Plugin {
 						requestUrl(`https://api.alquran.cloud/v1/ayah/${reference}/${this.settings.translation}`)
 					]);
 
-					const arJson = arRes.json as ApiResponse;
-					const trJson = trRes.json as ApiResponse;
+					const arJson = arRes.json;
+					const trJson = trRes.json;
 
-					if (arJson.code !== 200 || trJson.code !== 200) throw new Error("Edition API Error");
+					if (!isApiResponse(arJson) || !isApiResponse(trJson) || arJson.code !== 200 || trJson.code !== 200) {
+						throw new Error("Edition API Error: Invalid response structure");
+					}
 
 					skeletonArabic.remove();
 					skeletonDivider.remove();
@@ -185,9 +241,9 @@ export default class QuranPlugin extends Plugin {
                                 // Fetch the entire surah's tafsir from CDN
 								const newTafsirApiUrl = `https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${this.settings.tafsir}/${surahNum}.json`;
 								const tafsirRes = await requestUrl(newTafsirApiUrl);
-								const tafsirJson = tafsirRes.json as CdnTafsirSurahResponse;
+								const tafsirJson = tafsirRes.json;
 
-								if (tafsirJson && tafsirJson.ayahs && Array.isArray(tafsirJson.ayahs)) {
+								if (isCdnTafsirSurahResponse(tafsirJson)) {
                                     const targetAyahTafsir = tafsirJson.ayahs.find(a => a.ayah === ayahNum);
 
                                     if (targetAyahTafsir) {
