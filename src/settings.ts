@@ -51,9 +51,9 @@ interface CdnTafsirEdition {
 // region: --- Type Guards ---
 
 function isLanguageResponse(data: unknown): data is LanguageResponse {
-    const d = data as LanguageResponse;
+    if (typeof data !== 'object' || data === null) return false;
+    const d = data as Record<string, unknown>;
     return (
-        typeof d === 'object' && d !== null &&
         typeof d.code === 'number' &&
         typeof d.status === 'string' &&
         Array.isArray(d.data) &&
@@ -62,9 +62,9 @@ function isLanguageResponse(data: unknown): data is LanguageResponse {
 }
 
 function isEdition(data: unknown): data is Edition {
-    const d = data as Edition;
+    if (typeof data !== 'object' || data === null) return false;
+    const d = data as Record<string, unknown>;
     return (
-        typeof d === 'object' && d !== null &&
         typeof d.identifier === 'string' &&
         typeof d.language === 'string' &&
         typeof d.name === 'string' &&
@@ -76,9 +76,9 @@ function isEdition(data: unknown): data is Edition {
 }
 
 function isEditionResponse(data: unknown): data is EditionResponse {
-    const d = data as EditionResponse;
+    if (typeof data !== 'object' || data === null) return false;
+    const d = data as Record<string, unknown>;
     return (
-        typeof d === 'object' && d !== null &&
         typeof d.code === 'number' &&
         typeof d.status === 'string' &&
         Array.isArray(d.data) &&
@@ -87,9 +87,9 @@ function isEditionResponse(data: unknown): data is EditionResponse {
 }
 
 function isCdnTafsirEdition(data: unknown): data is CdnTafsirEdition {
-    const d = data as CdnTafsirEdition;
+    if (typeof data !== 'object' || data === null) return false;
+    const d = data as Record<string, unknown>;
     return (
-        typeof d === 'object' && d !== null &&
         typeof d.author_name === 'string' &&
         typeof d.id === 'number' &&
         typeof d.language_name === 'string' &&
@@ -150,16 +150,21 @@ export class QuranSettingTab extends PluginSettingTab {
 	private async fetchLanguages(): Promise<void> {
 		try {
 			const langRes = await requestUrl('https://api.alquran.cloud/v1/edition/language');
-			const langJson = langRes.json;
+			const langJson: unknown = langRes.json;
 
-			if (isLanguageResponse(langJson) && langJson.data) {
+			if (!isLanguageResponse(langJson)) {
+				throw new Error("Invalid language response structure");
+			}
+            if (langJson.code !== 200) {
+                throw new Error(`Language API Error: Bad status ${langJson.code}`);
+            }
+
+			if (langJson.data) {
 				this.languages = langJson.data.map((lang: string) => ({
 					code: lang,
 					name: this.getFullLanguageName(lang)
 				}));
 				this.languages.sort((a, b) => a.name.localeCompare(b.name));
-			} else {
-				throw new Error("Invalid language response structure");
 			}
 		} catch (e) {
 			console.error("Quran plugin: Failed to fetch languages.", e);
@@ -172,12 +177,17 @@ export class QuranSettingTab extends PluginSettingTab {
 		try {
 			const translationEditionUrl = `https://api.alquran.cloud/v1/edition/language/${this.plugin.settings.language}`;
 			const trRes = await requestUrl(translationEditionUrl);
-			const trJson = trRes.json;
+			const trJson: unknown = trRes.json;
 
-			if (isEditionResponse(trJson) && trJson.data) {
-				this.editions = trJson.data.filter((e: Edition) => e.format === 'text' && e.type === 'translation');
-			} else {
+			if (!isEditionResponse(trJson)) {
 				throw new Error("Invalid translation edition response structure");
+			}
+            if (trJson.code !== 200) {
+                throw new Error(`Translation API Error: Bad status ${trJson.code}`);
+            }
+
+			if (trJson.data) {
+				this.editions = trJson.data.filter((e: Edition) => e.format === 'text' && e.type === 'translation');
 			}
 		} catch (e) {
 			console.error("Quran plugin: Failed to fetch translations.", e);
@@ -190,7 +200,7 @@ export class QuranSettingTab extends PluginSettingTab {
 		try {
 			const tafsirApiUrl = 'https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/editions.json';
 			const tafsirRes = await requestUrl(tafsirApiUrl);
-			const tafsirJson = tafsirRes.json;
+			const tafsirJson: unknown = tafsirRes.json;
 
 			if (!isCdnTafsirEditionArray(tafsirJson)) {
 				throw new Error("Invalid Tafsir edition response structure");
