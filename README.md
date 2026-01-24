@@ -2,7 +2,7 @@
 
 A simple, native-feeling Obsidian plugin that allows you to embed a dynamic card that retrieves a random verse from the Holy Quran every time you open your note. It features custom styling, automatic translation fetching, and Uthmanic font support.
 
-![Screenshot of Random Quran Verse](https://raw.githubusercontent.com/taskfork/random-quran-verse/refs/heads/master/image/rqv-screenshot.png "Screenshot of Random Quran Verse")
+![Screenshot of Random Quran Verse](https://raw.githubusercontent.com/taskfork/random-quran-verse/refs/heads/master/img/rqv-screenshot.png "Screenshot of Random Quran Verse")
 
 ## Features
 
