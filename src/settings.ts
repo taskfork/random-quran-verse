@@ -511,18 +511,23 @@ export class QuranSettingTab extends PluginSettingTab {
 			.setName('Attributions')
 			.setHeading();
 		
+		const alQuranCloudFragment = new DocumentFragment();
+		alQuranCloudFragment.appendText('API for Quranic data. ');
+		const alQuranCloudLink = document.createElement('a');
+		alQuranCloudLink.textContent = 'https://alquran.cloud/';
+		alQuranCloudLink.href = 'https://alquran.cloud/';
+		alQuranCloudFragment.appendChild(alQuranCloudLink);
 		new Setting(containerEl)
 			.setName('Al Quran Cloud')
-			.setDesc(createFragment(frag => {
-				frag.appendText('API for Quranic data. ');
-				frag.createEl('a', { text: 'https://alquran.cloud/', href: 'https://alquran.cloud/' });
-			}));
-		
+			.setDesc(alQuranCloudFragment);
+
+		const tafsirApiFragment = new DocumentFragment();
+		tafsirApiFragment.appendText('API for tafsir (commentary) data. ');
+		const tafsirApiLink = document.createElement('a');
+		tafsirApiLink.textContent = 'https://github.com/spa5k/tafsir_api';
+		tafsirApiLink.href = 'https://github.com/spa5k/tafsir_api';
+		tafsirApiFragment.appendChild(tafsirApiLink);
 		new Setting(containerEl)
 			.setName('spa5k/tafsir_api')
-			.setDesc(createFragment(frag => {
-				frag.appendText('API for Tafsir (commentary) data. ');
-				frag.createEl('a', { text: 'https://github.com/spa5k/tafsir_api', href: 'https://github.com/spa5k/tafsir_api' });
-			}));
-	}
-}
+			.setDesc(tafsirApiFragment);
+		    }}
