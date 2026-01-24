@@ -9,7 +9,7 @@ A simple, native-feeling Obsidian plugin that allows you to embed a dynamic card
 * **Code block embedding**: Use simple quran code blocks to insert verses. These refresh everytime you open your note, perfect for your home page or other dashboards.
 * **Dynamic styling**: Customize background colors, accent borders, fonts, text sizes directly from the settings.
 * **Translation support**: Choose from multiple languages and specific translation editions (powered by the Al Quran Cloud API).
-* * **Tafsir commentary**: Click on the button for your tafsir of choice on that verse, right in Obsidian.
+* **Tafsir commentary**: Click on the button for your tafsir of choice on that verse, right in Obsidian.
 * **Copy to clipboard**: Easily copy the Arabic text and translation for use elsewhere.
 
 ## Usage
