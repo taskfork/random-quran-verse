@@ -240,7 +240,7 @@ export default class QuranPlugin extends Plugin {
 	}
 
 	applyGlobalStyles() {
-		const { backgroundColor, accentColor, fontSize } = this.settings;
+		const { backgroundColor, accentColor, fontSize, font } = this.settings;
 		const numericSize = parseFloat(fontSize);
 		const lineHeight = `${numericSize * 1.6}rem`;
 
@@ -248,6 +248,7 @@ export default class QuranPlugin extends Plugin {
 		document.body.style.setProperty('--quran-accent', accentColor);
 		document.body.style.setProperty('--quran-font-size', fontSize);
 		document.body.style.setProperty('--quran-line-height', lineHeight);
+		document.body.style.setProperty('--quran-font-family', font);
 	}
 
 	removeGlobalStyles() {
@@ -255,6 +256,7 @@ export default class QuranPlugin extends Plugin {
 		document.body.style.removeProperty('--quran-accent');
 		document.body.style.removeProperty('--quran-font-size');
 		document.body.style.removeProperty('--quran-line-height');
+		document.body.style.removeProperty('--quran-font-family');
 	}
 
 	async loadSettings() {
